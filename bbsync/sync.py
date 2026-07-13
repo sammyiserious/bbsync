@@ -25,10 +25,17 @@ _VIDEO_PAT = re.compile(
 
 _ILLEGAL_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
+# names Windows refuses regardless of extension (CON.pdf is as invalid as CON)
+_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
+                 *(f"COM{i}" for i in range(1, 10)),
+                 *(f"LPT{i}" for i in range(1, 10))}
+
 
 def sanitize(name: str) -> str:
     s = _ILLEGAL_CHARS.sub("-", name)
     s = re.sub(r"\s+", " ", s).strip().strip(".")
+    if s.split(".")[0].upper() in _WIN_RESERVED:
+        s = "_" + s
     return s[:150] or "untitled"
 
 

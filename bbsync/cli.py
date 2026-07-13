@@ -8,7 +8,7 @@ import sys
 
 from . import auth, schedule
 from .client import BBClient
-from .config import CONFIG_PATH, Config
+from .config import CONFIG_PATH, LOG_DIR, Config
 from .manifest import Manifest
 from .notify import notify
 from .sync import run_sync, update_course_list
@@ -82,9 +82,12 @@ def cmd_courses(args) -> int:
 def cmd_schedule(args) -> int:
     config = Config.load()
     if args.action == "install":
-        schedule.install(config.interval_hours)
-        print(f"Installed: syncs every {config.interval_hours}h (and at login). "
-              f"Logs: ~/.bbsync/logs/sync.log")
+        try:
+            desc = schedule.install(config.interval_hours)
+        except schedule.ScheduleUnsupported as exc:
+            print(f"Not supported here: {exc}")
+            return 1
+        print(f"{desc}. Logs: {LOG_DIR / 'sync.log'}")
     elif args.action == "uninstall":
         print("Removed." if schedule.uninstall() else "No schedule was installed.")
     else:
@@ -114,7 +117,18 @@ def _print_courses(config: Config) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    logging.basicConfig(format="%(asctime)s %(levelname)-7s %(message)s", level=logging.INFO)
+    # On macOS, launchd captures stderr into the log file; on Windows the
+    # scheduled task runs under pythonw (no console, sys.stderr is None),
+    # so log to the file directly there.
+    handlers: list[logging.Handler] = []
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler())
+    if sys.platform == "win32":
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(LOG_DIR / "sync.log", encoding="utf-8"))
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-7s %(message)s", level=logging.INFO, handlers=handlers
+    )
 
     parser = argparse.ArgumentParser(
         prog="bbsync",
