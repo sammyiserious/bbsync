@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bbsync"
+version = "0.1.0"
+description = "Auto-download and organise Imperial Blackboard course files"
+requires-python = ">=3.11"
+dependencies = ["playwright>=1.40"]
+
+[project.scripts]
+bbsync = "bbsync.cli:main"
+
+[tool.setuptools]
+packages = ["bbsync"]
