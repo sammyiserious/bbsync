@@ -12,7 +12,7 @@ Automatically downloads your lecture files from Imperial's Blackboard
 ## Setup (once)
 
 ```bash
-cd ~/Documents/couse_claude
+cd ~/Documents/bbsync
 python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/playwright install chromium
