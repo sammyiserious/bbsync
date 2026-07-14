@@ -9,6 +9,8 @@ Works on **macOS and Windows**.
 - Collects Panopto / video links into a `videos.md` per course (videos aren't downloaded)
 - Never re-downloads unchanged files; picks up updated versions automatically
 - Runs in the background every 4 hours (launchd on macOS, Task Scheduler on Windows)
+- **Full-text search** across every PDF, slide deck, Word doc and notebook —
+  `bbsync search "divergence theorem"` tells you the course, file and page
 
 ## Setup (once)
 
@@ -55,6 +57,8 @@ py -m venv .venv
 | `bbsync login` | Open a browser to sign in once. The session is saved and reused headlessly for weeks. |
 | `bbsync sync` | Download new/changed files right now. |
 | `bbsync courses` | List courses. `--disable "Maths"` / `--enable "Maths"` to control which sync. |
+| `bbsync index` | Build the search index (one-off; afterwards it updates itself after each sync). |
+| `bbsync search TERMS` | Search all notes. `--course "Quantum"` to filter, `-n 20` for more results. |
 | `bbsync schedule install` | Install the background job. Also `uninstall` / `status`. |
 | `bbsync status` | Show destination, last sync time and schedule state. |
 
@@ -73,6 +77,23 @@ enabled = true
 ```
 
 After changing `interval_hours`, run `bbsync schedule install` again to apply it.
+
+## Searching your notes
+
+After the one-off `bbsync index` (a few minutes), any concept is a one-second
+lookup — the index then keeps itself up to date after every sync:
+
+```
+$ bbsync search perturbation theory --course Quantum
+1. Lecture 14.pdf  (p.3, p.7)
+   PHYS50004 - Quantum Physics 2025-2026
+   p.3: … the first-order perturbation correction to the energy …
+```
+
+Search terms are stemmed ("oscillations" finds "oscillation") and implicitly
+ANDed. Use double quotes for exact phrases and FTS5 operators (`OR`, `NEAR`)
+for advanced queries. PDFs report page numbers, slide decks report slides,
+notebooks report cells.
 
 ## When the session expires
 

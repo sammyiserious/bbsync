@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import sys
+from pathlib import Path
 
-from . import auth, schedule
+from . import auth, schedule, textindex
 from .client import BBClient
 from .config import CONFIG_PATH, LOG_DIR, Config
 from .manifest import Manifest
@@ -56,6 +58,13 @@ def cmd_sync(_args) -> int:
     manifest.mark_synced()
     manifest.save()
     log.info("done — %s", stats.summary())
+    if textindex.index_exists():
+        try:
+            indexed, removed = textindex.update_index(config)
+            if indexed or removed:
+                log.info("search index: %d file(s) re-indexed, %d removed", indexed, removed)
+        except Exception as exc:
+            log.warning("search index update failed: %s", exc)
     new = stats.downloaded + stats.updated
     if new:
         notify("bbsync", f"{new} new file{'s' if new != 1 else ''} downloaded from Blackboard")
@@ -76,6 +85,50 @@ def cmd_courses(args) -> int:
             config.courses[cid].enabled = enable
             config.save()
     _print_courses(config)
+    return 0
+
+
+def cmd_index(args) -> int:
+    config = Config.load()
+    if not config.dest.exists():
+        print(f"Notes folder {config.dest} doesn't exist — run 'bbsync sync' first.")
+        return 1
+    indexed, removed = textindex.update_index(config, rebuild=args.rebuild)
+    print(f"Indexed {indexed} new/changed file(s), removed {removed}; "
+          f"{textindex.doc_count()} documents searchable.")
+    return 0
+
+
+def cmd_search(args) -> int:
+    if not textindex.index_exists():
+        print("No search index yet — run 'bbsync index' first (one-off, takes a few minutes).")
+        return 1
+    query = " ".join(args.query)
+    try:
+        results = textindex.search(query, course=args.course, limit=args.limit)
+    except sqlite3.OperationalError as exc:
+        print(f"Bad query syntax: {exc}")
+        return 1
+    if not results:
+        print("No matches.")
+        return 1
+
+    tty = sys.stdout.isatty()
+    bold, dim, reset = ("\x1b[1m", "\x1b[2m", "\x1b[0m") if tty else ("", "", "")
+    hl_start, hl_end = ("\x1b[1;33m", "\x1b[0m") if tty else ("»", "«")
+    for i, doc in enumerate(results, 1):
+        rel = Path(doc["path"])
+        label = textindex.PAGE_LABEL.get(rel.suffix.lower(), "p.")
+        pages = ", ".join(f"{label}{p}" for p, _ in doc["hits"]) if label else ""
+        inside = str(rel.relative_to(doc["course"]))
+        print(f"{bold}{i}. {inside}{reset}  {f'({pages})' if pages else ''}")
+        print(f"   {dim}{doc['course']}{reset}")
+        for page, snip in doc["hits"][:2]:
+            clean = " ".join(snip.split()).replace(textindex.HL_START, hl_start).replace(
+                textindex.HL_END, hl_end)
+            prefix = f"{label}{page}: " if label else ""
+            print(f"   {dim}{prefix}{reset}{clean}")
+        print()
     return 0
 
 
@@ -141,6 +194,12 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("courses", help="list courses; enable/disable syncing per course")
     p.add_argument("--enable", metavar="NAME_OR_ID")
     p.add_argument("--disable", metavar="NAME_OR_ID")
+    p = sub.add_parser("index", help="build/update the full-text search index")
+    p.add_argument("--rebuild", action="store_true", help="drop and re-index everything")
+    p = sub.add_parser("search", help="full-text search across all downloaded notes")
+    p.add_argument("query", nargs="+", help="search terms (quote for exact phrases)")
+    p.add_argument("-n", "--limit", type=int, default=10, help="max documents shown")
+    p.add_argument("--course", metavar="SUBSTR", help="only search courses matching this")
     p = sub.add_parser("schedule", help="manage the background auto-sync")
     p.add_argument("action", choices=["install", "uninstall", "status"])
     sub.add_parser("status", help="show config, last sync and schedule state")
@@ -150,6 +209,8 @@ def main(argv: list[str] | None = None) -> None:
         "login": cmd_login,
         "sync": cmd_sync,
         "courses": cmd_courses,
+        "index": cmd_index,
+        "search": cmd_search,
         "schedule": cmd_schedule,
         "status": cmd_status,
     }[args.cmd]

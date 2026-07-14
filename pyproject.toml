@@ -7,7 +7,7 @@ name = "bbsync"
 version = "0.1.0"
 description = "Auto-download and organise Imperial Blackboard course files"
 requires-python = ">=3.11"
-dependencies = ["playwright>=1.40"]
+dependencies = ["playwright>=1.40", "pypdf>=4.0"]
 
 [project.scripts]
 bbsync = "bbsync.cli:main"
