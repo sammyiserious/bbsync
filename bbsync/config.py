@@ -28,6 +28,8 @@ class CourseEntry:
 class Config:
     dest: Path = DEFAULT_DEST
     interval_hours: int = 4
+    # for AI page summaries in the dashboard; ANTHROPIC_API_KEY env var wins
+    anthropic_api_key: str | None = None
     # keyed by Blackboard course pk id, e.g. "_12345_1"
     courses: dict[str, CourseEntry] = field(default_factory=dict)
 
@@ -43,6 +45,7 @@ class Config:
         return cls(
             dest=Path(data.get("dest", str(DEFAULT_DEST))).expanduser(),
             interval_hours=int(data.get("interval_hours", 4)),
+            anthropic_api_key=data.get("anthropic_api_key") or None,
             courses=courses,
         )
 
@@ -52,8 +55,10 @@ class Config:
         lines = [
             f"dest = {json.dumps(str(self.dest))}",
             f"interval_hours = {self.interval_hours}",
-            "",
         ]
+        if self.anthropic_api_key:
+            lines.append(f"anthropic_api_key = {json.dumps(self.anthropic_api_key)}")
+        lines.append("")
         for cid, course in sorted(self.courses.items(), key=lambda kv: kv[1].name.lower()):
             lines += [
                 f"[courses.{json.dumps(cid)}]",

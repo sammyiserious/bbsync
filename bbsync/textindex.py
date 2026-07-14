@@ -36,6 +36,13 @@ CREATE TABLE IF NOT EXISTS docs(
 CREATE VIRTUAL TABLE IF NOT EXISTS pages USING fts5(
     content, doc_id UNINDEXED, page UNINDEXED, tokenize='porter unicode61'
 );
+CREATE TABLE IF NOT EXISTS summaries(
+    path TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    query TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    PRIMARY KEY(path, page, query)
+);
 """
 
 
@@ -114,6 +121,13 @@ def _open_db() -> sqlite3.Connection:
     BBSYNC_DIR.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(INDEX_PATH)
     con.executescript(_SCHEMA)
+    cols = {row[1] for row in con.execute("PRAGMA table_info(summaries)")}
+    if "query" not in cols:
+        # summaries used to be keyed by (path, page) only — that cache is
+        # invalid now that summaries are query-specific, so drop and recreate
+        con.execute("DROP TABLE summaries")
+        con.executescript(_SCHEMA)
+        con.commit()
     return con
 
 
@@ -123,6 +137,7 @@ def update_index(config: Config, *, rebuild: bool = False) -> tuple[int, int]:
     if rebuild:
         con.execute("DELETE FROM pages")
         con.execute("DELETE FROM docs")
+        con.execute("DELETE FROM summaries")
         con.commit()
 
     dest = config.dest
@@ -140,6 +155,7 @@ def update_index(config: Config, *, rebuild: bool = False) -> tuple[int, int]:
     for path in removed:
         con.execute("DELETE FROM pages WHERE doc_id = ?", (known[path][0],))
         con.execute("DELETE FROM docs WHERE id = ?", (known[path][0],))
+        con.execute("DELETE FROM summaries WHERE path = ?", (path,))
 
     todo = [
         path
@@ -159,6 +175,7 @@ def update_index(config: Config, *, rebuild: bool = False) -> tuple[int, int]:
             if rel in known:
                 doc_id = known[rel][0]
                 con.execute("DELETE FROM pages WHERE doc_id = ?", (doc_id,))
+                con.execute("DELETE FROM summaries WHERE path = ?", (rel,))  # content changed
                 con.execute(
                     "UPDATE docs SET mtime = ?, page_count = ? WHERE id = ?",
                     (on_disk[rel], len(extracted), doc_id),
@@ -202,12 +219,50 @@ def doc_count() -> int:
     return n
 
 
-def search(query: str, *, course: str | None = None, limit: int = 10) -> list[dict]:
+def page_text(path: str, page: int) -> str | None:
+    """Full extracted text of one page, straight from the index."""
+    con = _open_db()
+    row = con.execute(
+        "SELECT pages.content FROM pages JOIN docs ON docs.id = pages.doc_id"
+        " WHERE docs.path = ? AND pages.page = ?",
+        (path, page),
+    ).fetchone()
+    con.close()
+    return row[0] if row else None
+
+
+def _norm_query(query: str) -> str:
+    return " ".join(query.lower().split())
+
+
+def get_summary(path: str, page: int, query: str) -> str | None:
+    con = _open_db()
+    row = con.execute(
+        "SELECT summary FROM summaries WHERE path = ? AND page = ? AND query = ?",
+        (path, page, _norm_query(query)),
+    ).fetchone()
+    con.close()
+    return row[0] if row else None
+
+
+def store_summary(path: str, page: int, query: str, summary: str) -> None:
+    con = _open_db()
+    con.execute(
+        "INSERT OR REPLACE INTO summaries(path, page, query, summary) VALUES(?,?,?,?)",
+        (path, page, _norm_query(query), summary),
+    )
+    con.commit()
+    con.close()
+
+
+def search(
+    query: str, *, course: str | None = None, limit: int = 10, snippet_tokens: int = 12
+) -> list[dict]:
     """Return up to `limit` documents, each with its best-matching pages."""
     con = _open_db()
     sql = f"""
         SELECT docs.path, docs.course, pages.page,
-               snippet(pages, 0, '{HL_START}', '{HL_END}', ' … ', 12),
+               snippet(pages, 0, '{HL_START}', '{HL_END}', ' … ', {int(snippet_tokens)}),
                bm25(pages)
         FROM pages JOIN docs ON docs.id = pages.doc_id
         WHERE pages MATCH ?

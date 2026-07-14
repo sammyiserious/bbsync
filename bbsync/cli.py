@@ -6,6 +6,8 @@ import argparse
 import logging
 import sqlite3
 import sys
+import threading
+import webbrowser
 from pathlib import Path
 
 from . import auth, schedule, textindex
@@ -149,6 +151,21 @@ def cmd_schedule(args) -> int:
     return 0
 
 
+def cmd_dashboard(args) -> int:
+    try:
+        import uvicorn
+        from .server.app import app
+    except ModuleNotFoundError as exc:
+        print(f"Dashboard dependencies missing ({exc.name}) — reinstall with: pip install -e .")
+        return 1
+    url = f"http://127.0.0.1:{args.port}"
+    if not args.no_browser:
+        threading.Timer(0.8, webbrowser.open, [url]).start()
+    print(f"Dashboard running at {url} — press Ctrl+C to stop.")
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
 def cmd_status(_args) -> int:
     config = Config.load()
     manifest = Manifest.load()
@@ -203,6 +220,9 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("schedule", help="manage the background auto-sync")
     p.add_argument("action", choices=["install", "uninstall", "status"])
     sub.add_parser("status", help="show config, last sync and schedule state")
+    p = sub.add_parser("dashboard", help="open the web dashboard (everything above, no terminal needed)")
+    p.add_argument("--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
+    p.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
 
     args = parser.parse_args(argv)
     handler = {
@@ -213,5 +233,6 @@ def main(argv: list[str] | None = None) -> None:
         "search": cmd_search,
         "schedule": cmd_schedule,
         "status": cmd_status,
+        "dashboard": cmd_dashboard,
     }[args.cmd]
     sys.exit(handler(args))

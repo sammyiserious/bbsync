@@ -11,6 +11,9 @@ Works on **macOS and Windows**.
 - Runs in the background every 4 hours (launchd on macOS, Task Scheduler on Windows)
 - **Full-text search** across every PDF, slide deck, Word doc and notebook —
   `bbsync search "divergence theorem"` tells you the course, file and page
+- **Web dashboard** — `bbsync dashboard` opens a local page with everything
+  above as buttons: sign in, sync, search, browse files, toggle courses,
+  manage the schedule, and watch live progress. No terminal needed after setup.
 
 ## Setup (once)
 
@@ -61,6 +64,22 @@ py -m venv .venv
 | `bbsync search TERMS` | Search all notes. `--course "Quantum"` to filter, `-n 20` for more results. |
 | `bbsync schedule install` | Install the background job. Also `uninstall` / `status`. |
 | `bbsync status` | Show destination, last sync time and schedule state. |
+| `bbsync dashboard` | Open the web dashboard — every command above, in the browser. |
+
+## Dashboard
+
+```bash
+bbsync dashboard          # serves http://127.0.0.1:8765 and opens your browser
+```
+
+One page, two halves: the light side is your library (full-text search with
+page-level hits, a file browser, recent downloads); the navy panel is the
+machine (session state, Sync now, live job log, course toggles, auto-sync
+schedule and the search index). Everything the CLI does, clickable.
+
+The server binds to `127.0.0.1` only and rejects requests from any other
+host or origin — nothing is exposed to the network. `--port` picks another
+port; `--no-browser` skips opening a tab (useful if you keep it running).
 
 ## Configuration
 
