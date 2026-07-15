@@ -128,6 +128,14 @@ def _walk(
                   manifest, stats, claimed)
 
 
+def _cached_attachment_ok(manifest: Manifest, att_id: str, claimed: set[str]) -> bool:
+    state = manifest.attachment(att_id)
+    if not state or not Path(state["path"]).exists():
+        return False
+    claimed.add(state["path"])
+    return True
+
+
 def _download_attachments(
     client: BBClient,
     course_id: str,
@@ -138,15 +146,26 @@ def _download_attachments(
     stats: Stats,
     claimed: set[str],
 ) -> None:
+    item_id = item["id"]
+    modified = item.get("modified")
+
+    cached = manifest.item(item_id)
+    if cached and cached.get("modified") == modified:
+        cached_ids = cached.get("attachments", [])
+        if all(_cached_attachment_ok(manifest, aid, claimed) for aid in cached_ids):
+            stats.skipped += len(cached_ids)
+            return
+
     try:
-        attachments = client.attachments(course_id, item["id"])
+        attachments = client.attachments(course_id, item_id)
     except (Forbidden, BBError) as exc:
         log.debug("no attachments for '%s': %s", title, exc)
         return
 
-    modified = item.get("modified")
+    seen_ids = []
     for att in attachments:
         att_id = str(att.get("id"))
+        seen_ids.append(att_id)
         fname = sanitize(att.get("fileName") or att_id)
         state = manifest.attachment(att_id)
 
@@ -177,6 +196,8 @@ def _download_attachments(
             stats.downloaded += 1
             log.info("download %s", target)
         manifest.record_attachment(att_id, str(target), modified)
+
+    manifest.record_item(item_id, modified, seen_ids)
 
 
 def _record_link(

@@ -19,6 +19,7 @@ class Manifest:
         else:
             data = {}
         data.setdefault("attachments", {})
+        data.setdefault("items", {})
         data.setdefault("links", {})
         return cls(data)
 
@@ -37,6 +38,16 @@ class Manifest:
             "modified": content_modified,
             "downloaded": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+
+    # -- content items ----------------------------------------------------
+    # Lets a sync skip the attachments() API call entirely for items whose
+    # `modified` timestamp hasn't changed since we last listed them.
+
+    def item(self, item_id: str) -> dict | None:
+        return self._data["items"].get(item_id)
+
+    def record_item(self, item_id: str, modified: str | None, attachment_ids: list[str]) -> None:
+        self._data["items"][item_id] = {"modified": modified, "attachments": attachment_ids}
 
     # -- video/external links -------------------------------------------
 
