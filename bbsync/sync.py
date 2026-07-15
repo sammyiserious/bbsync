@@ -75,9 +75,9 @@ def run_sync(client: BBClient, config: Config, manifest: Manifest, user_id: str)
     stats = Stats()
     update_course_list(client, config, user_id)
 
-    for cid, entry in config.courses.items():
-        if not entry.enabled:
-            continue
+    enabled = [(cid, entry) for cid, entry in config.courses.items() if entry.enabled]
+    for i, (cid, entry) in enumerate(enabled, 1):
+        log.info("[%d/%d] checking %s", i, len(enabled), entry.name)
         try:
             items = client.contents(cid)
         except Forbidden:
