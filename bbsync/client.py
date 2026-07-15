@@ -13,7 +13,7 @@ from .config import BASE_URL
 log = logging.getLogger("bbsync")
 
 # polite delay between requests, seconds
-_REQUEST_DELAY = 0.05
+_REQUEST_DELAY = 0.023
 
 
 class BBError(Exception):
